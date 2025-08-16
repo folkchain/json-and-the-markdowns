@@ -29,6 +29,65 @@ def main():
         ]
         publication_type = st.selectbox("Publication Type", pub_types, index=0)
         
+        # Common Metadata Section
+        st.subheader("📝 Common Metadata")
+        with st.expander("Set metadata for all files", expanded=False):
+            st.markdown("*Apply the same metadata to all uploaded files*")
+            
+            # Author information
+            common_author = st.text_input(
+                "Author(s)", 
+                placeholder="John Doe, Jane Smith",
+                help="Separate multiple authors with commas"
+            )
+            
+            # Publication details
+            col1, col2 = st.columns(2)
+            with col1:
+                common_publisher = st.text_input("Publisher")
+                common_year = st.number_input(
+                    "Year", 
+                    min_value=1000, 
+                    max_value=2030, 
+                    value=None,
+                    help="Publication year"
+                )
+            with col2:
+                common_language = st.selectbox(
+                    "Language", 
+                    ["en", "es", "fr", "de", "it", "pt", "ru", "zh", "ja"], 
+                    index=0
+                )
+                common_series = st.text_input("Series/Collection")
+            
+            # Journal info (show when relevant)
+            if publication_type in ["article", "journal", "magazine"]:
+                st.markdown("**Journal Information:**")
+                common_journal = st.text_input("Journal Title")
+                jcol1, jcol2 = st.columns(2)
+                with jcol1:
+                    common_volume = st.text_input("Volume")
+                with jcol2:
+                    common_issue = st.text_input("Issue")
+            else:
+                common_journal = ""
+                common_volume = ""
+                common_issue = ""
+            
+            # Classification
+            common_subjects = st.text_input(
+                "Subjects/Keywords", 
+                placeholder="history, science, literature",
+                help="Separate with commas"
+            )
+            
+            # Rights and licensing
+            common_license = st.text_input("License", placeholder="CC BY 4.0, All Rights Reserved, etc.")
+            
+            # Clear button
+            if st.button("🗑️ Clear All Common Metadata", help="Reset all common metadata fields"):
+                st.rerun()
+        
         # Text processing options
         st.subheader("Text Processing")
         apply_cleaning = st.checkbox("Apply text cleaning rules", value=True, 
@@ -44,6 +103,8 @@ def main():
                 placeholder=r"^\s*(?:chapter|chap\.?)\s+([ivxlcdm]+|\d+)\b",
                 help="Leave empty to use default pattern"
             )
+        else:
+            custom_chapter_regex = ""
         
         # Export options
         st.subheader("Export Options")
@@ -54,6 +115,11 @@ def main():
         with st.expander("ℹ️ Help & Tips"):
             st.markdown("""
             **Supported Files:** TXT and PDF
+            
+            **Common Metadata:**
+            - Set once, applies to all files
+            - Individual file metadata still detected
+            - Saves time for batch processing
             
             **Text Cleaning Features:**
             - OCR error correction
@@ -72,6 +138,29 @@ def main():
             - Clean plain text
             """)
     
+    # Collect common metadata
+    common_metadata = {}
+    if common_author.strip():
+        common_metadata["author"] = common_author.strip()
+    if common_publisher.strip():
+        common_metadata["publisher"] = common_publisher.strip()
+    if common_year:
+        common_metadata["year"] = common_year
+    if common_language and common_language != "en":
+        common_metadata["language"] = common_language
+    if common_series.strip():
+        common_metadata["series"] = common_series.strip()
+    if common_journal.strip():
+        common_metadata["journal"] = common_journal.strip()
+    if common_volume.strip():
+        common_metadata["volume"] = common_volume.strip()
+    if common_issue.strip():
+        common_metadata["issue"] = common_issue.strip()
+    if common_subjects.strip():
+        common_metadata["subjects"] = common_subjects.strip()
+    if common_license.strip():
+        common_metadata["license"] = common_license.strip()
+    
     # Main content area
     col1, col2 = st.columns([2, 3])
     
@@ -87,6 +176,18 @@ def main():
         if uploaded_files:
             st.success(f"Uploaded {len(uploaded_files)} file(s)")
             
+            # Show common metadata preview if any is set
+            if common_metadata:
+                with st.expander("📋 Common Metadata Preview", expanded=True):
+                    st.markdown("*The following metadata will be applied to all files:*")
+                    for key, value in common_metadata.items():
+                        if key == "author":
+                            st.write(f"**Authors:** {value}")
+                        elif key == "subjects":
+                            st.write(f"**Subjects:** {value}")
+                        else:
+                            st.write(f"**{key.title()}:** {value}")
+            
             # Show file details
             with st.expander("📋 File Details"):
                 for file in uploaded_files:
@@ -98,9 +199,16 @@ def main():
             # Process files button
             if st.button("🔄 Process Files", type="primary", use_container_width=True):
                 with st.spinner("Processing files..."):
-                    process_files(uploaded_files, publication_type, apply_cleaning, 
-                                split_chapters, custom_chapter_regex if split_chapters else None,
-                                export_markdown, export_text)
+                    process_files(
+                        uploaded_files, 
+                        publication_type, 
+                        apply_cleaning, 
+                        split_chapters, 
+                        custom_chapter_regex if split_chapters else None,
+                        export_markdown, 
+                        export_text,
+                        common_metadata
+                    )
     
     with col2:
         st.subheader("ℹ️ About This Tool")
@@ -114,6 +222,7 @@ def main():
         - 🏷️ **Rich metadata**: Complete bibliographic information
         - 📝 **Multiple exports**: JSON, Markdown, Plain Text
         - 🚀 **Batch processing**: Handle multiple files at once
+        - 📋 **Common metadata**: Apply same metadata to all files
         
         **📚 Metadata Structure:**
         """)
@@ -140,7 +249,8 @@ def main():
         - Text analysis workflows
         """)
 
-def process_files(uploaded_files, publication_type, apply_cleaning, split_chapters, custom_regex, export_markdown, export_text):
+def process_files(uploaded_files, publication_type, apply_cleaning, split_chapters, 
+                 custom_regex, export_markdown, export_text, common_metadata):
     """Process uploaded files and display results"""
     
     results = []
@@ -176,8 +286,9 @@ def process_files(uploaded_files, publication_type, apply_cleaning, split_chapte
             else:
                 cleaned_text = raw_text
             
-            # Build document structure
-            doc = build_doc(cleaned_text, uploaded_file.name, publication_type, uploaded_file.size)
+            # Build document structure with common metadata
+            doc = build_doc(cleaned_text, uploaded_file.name, publication_type, 
+                          uploaded_file.size, common_metadata)
             
             # Handle chapter splitting
             if split_chapters and cleaned_text.strip():
@@ -288,8 +399,11 @@ def display_results(results, export_markdown, export_text):
                     st.write(f"**Title:** {doc['data']['title']}")
                     st.write(f"**Type:** {doc['data']['publication_type']}")
                     st.write(f"**Language:** {doc['data']['language']}")
+                    authors = [a.get("name", "") for a in doc["authorship"]["authors"]]
+                    st.write(f"**Authors:** {', '.join(authors) if authors else 'Not specified'}")
                 with col2:
                     st.write(f"**Year:** {doc['data']['year'] or 'Not specified'}")
+                    st.write(f"**Publisher:** {doc['publication_details']['publisher'] or 'Not specified'}")
                     st.write(f"**File Size:** {doc['digital_format']['file_size']:,} bytes")
                     st.write(f"**Chapters:** {len(doc['content']['chapters'])}")
                 
