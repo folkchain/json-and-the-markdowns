@@ -250,17 +250,77 @@ def split_into_chapters(text: str, chapter_re=CHAPTER_RE_DEFAULT):
         chapters.append({"number": num or (idx+1), "title": title, "content": body})
     return chapters
 
-def build_doc(cleaned_text: str, filename: str, pub_type: str, file_size: int) -> Dict[str, Any]:
-    """Build document structure from cleaned text"""
+def parse_authors(author_string: str) -> List[Dict[str, str]]:
+    """Parse author string into list of author dictionaries"""
+    if not author_string or not author_string.strip():
+        return []
+    
+    authors = []
+    for name in author_string.split(","):
+        name = name.strip()
+        if name:
+            authors.append({"name": name})
+    return authors
+
+def parse_subjects(subjects_string: str) -> List[str]:
+    """Parse subjects string into list"""
+    if not subjects_string or not subjects_string.strip():
+        return []
+    
+    return [s.strip() for s in subjects_string.split(",") if s.strip()]
+
+def build_doc(cleaned_text: str, filename: str, pub_type: str, file_size: int, 
+              common_metadata: Dict[str, Any] = None) -> Dict[str, Any]:
+    """Build document structure from cleaned text with common metadata"""
     doc = skeleton_doc()
     
-    # Set basic data
+    # Set basic data from filename
     doc["data"]["title"] = guess_title_from_filename(filename)
     doc["data"]["publication_type"] = pub_type
     
+    # Extract year from filename (will be overridden by common metadata if provided)
     year = guess_year_from_name(filename)
     if year is not None:
         doc["data"]["year"] = year
+    
+    # Apply common metadata if provided
+    if common_metadata:
+        # Authors
+        if "author" in common_metadata:
+            doc["authorship"]["authors"] = parse_authors(common_metadata["author"])
+        
+        # Publication details
+        if "publisher" in common_metadata:
+            doc["publication_details"]["publisher"] = common_metadata["publisher"]
+        
+        if "year" in common_metadata:
+            doc["data"]["year"] = common_metadata["year"]  # Override filename year
+        
+        if "language" in common_metadata:
+            doc["data"]["language"] = common_metadata["language"]
+        
+        if "series" in common_metadata:
+            doc["series_info"]["series_title"] = common_metadata["series"]
+        
+        # Journal information
+        if "journal" in common_metadata:
+            doc["journal_info"]["journal_title"] = common_metadata["journal"]
+        
+        if "volume" in common_metadata:
+            doc["publication_details"]["volume"] = common_metadata["volume"]
+        
+        if "issue" in common_metadata:
+            doc["publication_details"]["issue"] = common_metadata["issue"]
+        
+        # Classification
+        if "subjects" in common_metadata:
+            subjects = parse_subjects(common_metadata["subjects"])
+            doc["classification"]["subjects"] = subjects
+            doc["classification"]["keywords"] = subjects  # Also add as keywords
+        
+        # Rights and licensing
+        if "license" in common_metadata:
+            doc["rights_licensing"]["license"] = common_metadata["license"]
     
     # Set digital format info
     ext = Path(filename).suffix.lower().lstrip(".")
@@ -309,6 +369,11 @@ def create_markdown_export(doc: Dict[str, Any]) -> str:
         lines += [f"  - {yaml_escape(a)}" for a in authors]
     else:
         lines += ["  - "]
+    
+    # Add subjects as tags if no tags specified
+    if not tags and d["classification"]["subjects"]:
+        tags = d["classification"]["subjects"]
+    
     lines += ["tags:"]
     if tags:
         lines += [f"  - {yaml_escape(t)}" for t in tags]
