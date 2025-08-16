@@ -8,7 +8,7 @@ from text_processor import *
 
 # Configure page
 st.set_page_config(
-    page_title="Document to JSON Converter", 
+    page_title="JSON and the Markdowns", 
     page_icon="📄", 
     layout="wide",
     initial_sidebar_state="expanded"
