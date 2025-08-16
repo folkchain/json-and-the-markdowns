@@ -91,6 +91,31 @@ def clean_text(text: str) -> str:
         text = apply_rules(text, group)
     return text.strip()
 
+def format_text(text: str, format_type: str) -> str:
+    """Apply text formatting based on chosen option"""
+    if format_type == "preserve_formatting":
+        # Keep all original formatting
+        return text
+    
+    elif format_type == "paragraph_mode":
+        # Keep paragraph breaks (double newlines) but join wrapped lines
+        # First, protect paragraph breaks
+        text = re.sub(r'\n\s*\n', '§PARAGRAPH§', text)
+        # Then join single line breaks with spaces
+        text = re.sub(r'\n+', ' ', text)
+        # Restore paragraph breaks
+        text = re.sub(r'§PARAGRAPH§', '\n\n', text)
+        # Clean up extra spaces
+        text = re.sub(r' +', ' ', text)
+        return text.strip()
+    
+    elif format_type == "flatten_text":
+        # Convert all newlines to spaces
+        text = re.sub(r'\s+', ' ', text)
+        return text.strip()
+    
+    return text
+
 def extract_pdf_text(pdf_bytes: bytes) -> str:
     """Extract text from PDF bytes"""
     try:
@@ -173,7 +198,7 @@ def skeleton_doc(publication_type: str = "book") -> Dict[str, Any]:
             "tags": [],
             "genre": "",
             "dewey_decimal": "",
-            "lcc": "",
+            "lcc": "",  # Library of Congress Classification
             "mesh_terms": []
         },
         "physical_format": {"format": "", "dimensions": "", "weight": "", "binding": ""},
@@ -184,7 +209,6 @@ def skeleton_doc(publication_type: str = "book") -> Dict[str, Any]:
             "mime_type": ""
         },
         "content": {"table_of_contents": [], "chapters": [], "sections": [], "full_text": ""},
-        "rights_licensing": {"copyright": "", "license": "", "rights_statement": "", "open_access": False, "usage_rights": ""},
         "citations_references": {
             "bibliography": [],
             "cited_by_count": 0,
@@ -401,6 +425,20 @@ def parse_subjects(subjects_string: str) -> List[str]:
     
     return [s.strip() for s in subjects_string.split(",") if s.strip()]
 
+def validate_lcc(lcc_string: str) -> str:
+    """Validate and normalize Library of Congress Classification number"""
+    if not lcc_string or not lcc_string.strip():
+        return ""
+    
+    lcc = lcc_string.strip().upper()
+    
+    # Basic validation - should start with 1-3 letters followed by numbers
+    if re.match(r'^[A-Z]{1,3}\d+', lcc):
+        return lcc
+    
+    # Return original if it doesn't match standard format
+    return lcc_string.strip()
+
 def build_doc(cleaned_text: str, filename: str, pub_type: str, file_size: int, 
               common_metadata: Dict[str, Any] = None) -> Dict[str, Any]:
     """Build document structure from cleaned text with common metadata"""
@@ -459,6 +497,10 @@ def build_doc(cleaned_text: str, filename: str, pub_type: str, file_size: int,
         if "isbn" in common_metadata and "isbn" in doc["identifiers"]:
             doc["identifiers"]["isbn"] = common_metadata["isbn"]
         
+        # Library of Congress Classification
+        if "lcc" in common_metadata:
+            doc["classification"]["lcc"] = validate_lcc(common_metadata["lcc"])
+        
         # Classification
         if "subjects" in common_metadata:
             subjects = parse_subjects(common_metadata["subjects"])
@@ -515,6 +557,10 @@ def create_markdown_export(doc: Dict[str, Any]) -> str:
     
     if "isbn" in d["identifiers"]:
         lines.append(f"isbn: {yaml_escape(d['identifiers']['isbn'])}")
+    
+    # Add Library of Congress Classification
+    if d["classification"]["lcc"]:
+        lines.append(f"lcc: {yaml_escape(d['classification']['lcc'])}")
     
     lines.extend([
         f"pages: {yaml_escape(pages)}",
