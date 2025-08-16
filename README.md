@@ -1,6 +1,6 @@
-# JSON & the Markdowns: A Document to JSON Converter
+# JSON & the Markdowns
 
-A powerful Streamlit app that converts TXT and PDF documents into structured JSON format with comprehensive metadata.
+A powerful Streamlit app that converts TXT and PDF documents into structured Markdown and JSON with comprehensive metadata.
 
 ## 🚀 Live Demo
 
