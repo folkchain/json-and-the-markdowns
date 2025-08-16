@@ -103,6 +103,29 @@ def main():
                 help="Separate with commas"
             )
             
+            # Library of Congress Classification
+            common_lcc = st.text_input(
+                "Library of Congress Call Number",
+                placeholder="e.g., QA76.73.P98, E185.86, PR4037",
+                help="Standard LCC format: letter(s) + numbers + optional decimals"
+            )
+            
+            if common_lcc:
+                with st.expander("📚 LCC Quick Reference"):
+                    st.markdown("""
+                    **Common LCC Classes:**
+                    - **A** - General Works
+                    - **B** - Philosophy, Psychology, Religion
+                    - **D** - World History
+                    - **E-F** - American History
+                    - **G** - Geography, Anthropology
+                    - **H** - Social Sciences
+                    - **L** - Education
+                    - **P** - Language and Literature
+                    - **Q** - Science
+                    - **T** - Technology
+                    """)
+            
             # Clear button
             if st.button("🗑️ Clear All Common Metadata", help="Reset all common metadata fields"):
                 st.rerun()
@@ -111,6 +134,18 @@ def main():
         st.subheader("Text Processing")
         apply_cleaning = st.checkbox("Apply text cleaning rules", value=True, 
                                    help="Fix OCR errors, normalize punctuation, etc.")
+        
+        # Text formatting option
+        text_format = st.selectbox(
+            "Text Formatting",
+            ["preserve_formatting", "paragraph_mode", "flatten_text"],
+            format_func=lambda x: {
+                "preserve_formatting": "Preserve all formatting",
+                "paragraph_mode": "Paragraph mode (keep paragraph breaks)",
+                "flatten_text": "Flatten to single line"
+            }[x],
+            help="How to handle line breaks in the full text"
+        )
         
         # Chapter splitting
         split_chapters = st.checkbox("Split into chapters", value=False,
@@ -141,27 +176,19 @@ def main():
             st.markdown("""
             **Supported Files:** TXT and PDF
             
-            **Common Metadata:**
-            - Set once, applies to all files
-            - Publication type determines available fields
-            - Individual file metadata still detected
+            **Text Formatting Options:**
+            - **Preserve**: Keep all original line breaks
+            - **Paragraph**: Keep paragraph breaks, join wrapped lines
+            - **Flatten**: Convert all text to single line with spaces
             
-            **Text Cleaning Features:**
-            - OCR error correction
-            - Punctuation normalization
-            - Single word line fixes
-            - Page number removal
+            **Library of Congress Classification:**
+            - Standard format: Letters + Numbers (e.g., QA76.73.P98)
+            - Helps with library cataloging and organization
             
             **Chapter Detection:**
             - Automatically finds chapter headings
-            - Removes book title headers
-            - Handles page number patterns
-            - Supports Roman numerals
-            
-            **Export Formats:**
-            - JSON with full metadata
-            - Markdown with YAML front matter
-            - Clean plain text
+            - Removes book title headers and page numbers
+            - Supports Roman numerals and various formats
             """)
     
     # Collect common metadata
@@ -192,6 +219,8 @@ def main():
         common_metadata["edition"] = common_edition.strip()
     if common_subjects.strip():
         common_metadata["subjects"] = common_subjects.strip()
+    if common_lcc.strip():
+        common_metadata["lcc"] = common_lcc.strip()
     
     # Main content area
     col1, col2 = st.columns([2, 3])
@@ -217,6 +246,8 @@ def main():
                             st.write(f"**Authors:** {value}")
                         elif key == "subjects":
                             st.write(f"**Subjects:** {value}")
+                        elif key == "lcc":
+                            st.write(f"**LC Call Number:** {value}")
                         elif key == "publication_type":
                             continue  # Skip showing this
                         else:
@@ -237,6 +268,7 @@ def main():
                         uploaded_files, 
                         publication_type, 
                         apply_cleaning, 
+                        text_format,
                         split_chapters, 
                         custom_chapter_regex if split_chapters else None,
                         common_metadata
@@ -255,9 +287,9 @@ def main():
         - 🧹 **Smart text cleaning**: OCR error correction, punctuation normalization
         - 📑 **Chapter detection**: Automatic splitting with improved patterns
         - 🏷️ **Rich metadata**: Publication type-specific fields
+        - 📚 **Library of Congress**: Standard classification system
         - 📝 **Multiple exports**: JSON, Markdown, Plain Text
         - 🚀 **Batch processing**: Handle multiple files at once
-        - 📋 **Common metadata**: Apply same metadata to all files
         
         **📚 Publication Types:**
         - **Books**: ISBN, edition, publisher info
@@ -273,6 +305,7 @@ def main():
                 "authorship": {"authors": [{"name": "Author Name"}]},
                 "publication_details": {"publisher": "Publisher", "edition": "1st"},
                 "identifiers": {"isbn": "978-0123456789"},
+                "classification": {"lcc": "PS3511.I9"},
                 "content": {"full_text": "...", "chapters": []}
             }
         elif publication_type in ["article", "journal"]:
@@ -280,12 +313,14 @@ def main():
                 "data": {"title": "Article Title", "publication_type": "article", "year": 2024},
                 "authorship": {"authors": [{"name": "Author Name"}]},
                 "journal_info": {"journal_title": "Journal Name", "volume": "10", "issue": "2"},
+                "classification": {"lcc": "QA76.73"},
                 "content": {"full_text": "..."}
             }
         else:
             sample_structure = {
                 "data": {"title": "Document Title", "publication_type": publication_type, "year": 2024},
                 "authorship": {"authors": [{"name": "Author Name"}]},
+                "classification": {"lcc": ""},
                 "content": {"full_text": "..."}
             }
         
@@ -305,8 +340,8 @@ def main():
     if st.session_state.processing_results:
         display_results(st.session_state.processing_results)
 
-def process_files(uploaded_files, publication_type, apply_cleaning, split_chapters, 
-                 custom_regex, common_metadata):
+def process_files(uploaded_files, publication_type, apply_cleaning, text_format, 
+                 split_chapters, custom_regex, common_metadata):
     """Process uploaded files and return results"""
     
     results = []
@@ -342,11 +377,14 @@ def process_files(uploaded_files, publication_type, apply_cleaning, split_chapte
             else:
                 cleaned_text = raw_text
             
+            # Apply text formatting
+            formatted_text = format_text(cleaned_text, text_format)
+            
             # Build document structure with common metadata
-            doc = build_doc(cleaned_text, uploaded_file.name, publication_type, 
+            doc = build_doc(formatted_text, uploaded_file.name, publication_type, 
                           uploaded_file.size, common_metadata)
             
-            # Handle chapter splitting
+            # Handle chapter splitting (use original cleaned text, not formatted)
             if split_chapters and cleaned_text.strip():
                 chapter_re = CHAPTER_RE_DEFAULT
                 if custom_regex and custom_regex.strip():
@@ -359,6 +397,10 @@ def process_files(uploaded_files, publication_type, apply_cleaning, split_chapte
                 book_title = doc["data"]["title"]
                 chapters = split_into_chapters(cleaned_text, chapter_re, book_title)
                 if chapters:
+                    # Apply text formatting to chapters too
+                    for chapter in chapters:
+                        chapter["content"] = format_text(chapter["content"], text_format)
+                    
                     doc["content"]["chapters"] = chapters
                     doc["content"]["table_of_contents"] = [
                         {"level": 1, "title": c["title"], "section_id": f"ch-{i+1}"}
@@ -391,6 +433,8 @@ def process_files(uploaded_files, publication_type, apply_cleaning, split_chapte
     
     return results
 
+# Rest of the display_results and helper functions remain the same...
+# [Copy the display_results function and all helper functions from the previous version]
 def display_results(results):
     """Display processing results and download options"""
     
@@ -592,7 +636,8 @@ def display_results(results):
                     st.write(f"**Year:** {doc['data']['year'] or 'Not specified'}")
                     pub_details = doc.get('publication_details', {})
                     st.write(f"**Publisher:** {pub_details.get('publisher', 'Not specified')}")
-                    st.write(f"**File Size:** {doc['digital_format']['file_size']:,} bytes")
+                    lcc = doc["classification"].get("lcc", "")
+                    st.write(f"**LC Call Number:** {lcc or 'Not specified'}")
                     st.write(f"**Chapters:** {len(doc['content']['chapters'])}")
                 
                 # Show content preview
