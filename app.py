@@ -15,7 +15,7 @@ st.set_page_config(
 )
 
 def main():
-    st.title("📄 Document to JSON Converter")
+    st.title("📄 JSON and the Markdowns")
     st.markdown("Convert TXT and PDF documents to structured JSON with metadata, plus export options.")
     
     # Sidebar configuration
