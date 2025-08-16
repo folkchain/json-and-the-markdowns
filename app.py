@@ -18,6 +18,12 @@ def main():
     st.title("📄 JSON and the Markdowns")
     st.markdown("Convert TXT and PDF documents to structured JSON with metadata, plus export options.")
     
+    # Initialize session state for results
+    if 'processing_results' not in st.session_state:
+        st.session_state.processing_results = None
+    if 'export_settings' not in st.session_state:
+        st.session_state.export_settings = {'markdown': False, 'text': False}
+    
     # Sidebar configuration
     with st.sidebar:
         st.header("⚙️ Configuration")
@@ -111,6 +117,12 @@ def main():
         export_markdown = st.checkbox("Export Markdown", value=False)
         export_text = st.checkbox("Export Plain Text", value=False)
         
+        # Store export settings in session state
+        st.session_state.export_settings = {
+            'markdown': export_markdown,
+            'text': export_text
+        }
+        
         # Help section
         with st.expander("ℹ️ Help & Tips"):
             st.markdown("""
@@ -199,16 +211,17 @@ def main():
             # Process files button
             if st.button("🔄 Process Files", type="primary", use_container_width=True):
                 with st.spinner("Processing files..."):
-                    process_files(
+                    results = process_files(
                         uploaded_files, 
                         publication_type, 
                         apply_cleaning, 
                         split_chapters, 
                         custom_chapter_regex if split_chapters else None,
-                        export_markdown, 
-                        export_text,
                         common_metadata
                     )
+                    # Store results in session state
+                    st.session_state.processing_results = results
+                    st.rerun()
     
     with col2:
         st.subheader("ℹ️ About This Tool")
@@ -248,10 +261,14 @@ def main():
         - Content management systems
         - Text analysis workflows
         """)
+    
+    # Display results if they exist
+    if st.session_state.processing_results:
+        display_results(st.session_state.processing_results)
 
 def process_files(uploaded_files, publication_type, apply_cleaning, split_chapters, 
-                 custom_regex, export_markdown, export_text, common_metadata):
-    """Process uploaded files and display results"""
+                 custom_regex, common_metadata):
+    """Process uploaded files and return results"""
     
     results = []
     
@@ -331,10 +348,9 @@ def process_files(uploaded_files, publication_type, apply_cleaning, split_chapte
     progress_bar.empty()
     status_text.empty()
     
-    # Display results
-    display_results(results, export_markdown, export_text)
+    return results
 
-def display_results(results, export_markdown, export_text):
+def display_results(results):
     """Display processing results and download options"""
     
     st.subheader("📊 Processing Results")
@@ -358,8 +374,138 @@ def display_results(results, export_markdown, export_text):
         st.error("No files were successfully processed.")
         return
     
-    # Results tabs
-    tab1, tab2, tab3 = st.tabs(["📋 Summary", "📄 Preview", "📥 Downloads"])
+    # Immediate Download Section - Always visible after processing
+    st.subheader("📥 Download Options")
+    
+    successful_results = [r for r in results if r['success']]
+    export_settings = st.session_state.export_settings
+    
+    if len(successful_results) == 1:
+        # Single file downloads
+        result = successful_results[0]
+        doc = result['doc']
+        filename_base = Path(result['filename']).stem
+        
+        st.write(f"**Downloads for:** {result['filename']}")
+        
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            # JSON download
+            json_str = json.dumps(doc, ensure_ascii=False, indent=2)
+            st.download_button(
+                label="📄 Download JSON",
+                data=json_str,
+                file_name=f"{filename_base}.json",
+                mime="application/json",
+                use_container_width=True,
+                key=f"json_{filename_base}"
+            )
+        
+        with col2:
+            if export_settings['markdown']:
+                # Markdown download
+                md_content = create_markdown_export(doc)
+                st.download_button(
+                    label="📝 Download Markdown",
+                    data=md_content,
+                    file_name=f"{filename_base}.md",
+                    mime="text/markdown",
+                    use_container_width=True,
+                    key=f"md_{filename_base}"
+                )
+            else:
+                st.info("Enable Markdown export in settings")
+        
+        with col3:
+            if export_settings['text']:
+                # Plain text download
+                text_content = get_text_content(doc)
+                st.download_button(
+                    label="📃 Download Text",
+                    data=text_content,
+                    file_name=f"{filename_base}.txt",
+                    mime="text/plain",
+                    use_container_width=True,
+                    key=f"txt_{filename_base}"
+                )
+            else:
+                st.info("Enable text export in settings")
+        
+        with col4:
+            # Individual ZIP for single file (all formats)
+            zip_buffer = create_single_file_zip(result, export_settings)
+            st.download_button(
+                label="📦 Download ZIP",
+                data=zip_buffer.getvalue(),
+                file_name=f"{filename_base}_all_formats.zip",
+                mime="application/zip",
+                use_container_width=True,
+                key=f"zip_{filename_base}"
+            )
+    
+    else:
+        # Multiple files - batch download options
+        st.write(f"**Batch downloads for {len(successful_results)} files**")
+        
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            # JSON only ZIP
+            json_zip = create_format_zip(successful_results, "json")
+            st.download_button(
+                label="📄 All JSON Files",
+                data=json_zip.getvalue(),
+                file_name="all_json_files.zip",
+                mime="application/zip",
+                use_container_width=True,
+                key="batch_json"
+            )
+        
+        with col2:
+            if export_settings['markdown']:
+                # Markdown only ZIP
+                md_zip = create_format_zip(successful_results, "markdown")
+                st.download_button(
+                    label="📝 All Markdown Files",
+                    data=md_zip.getvalue(),
+                    file_name="all_markdown_files.zip",
+                    mime="application/zip",
+                    use_container_width=True,
+                    key="batch_md"
+                )
+            else:
+                st.info("Enable Markdown export in settings")
+        
+        with col3:
+            if export_settings['text']:
+                # Text only ZIP
+                txt_zip = create_format_zip(successful_results, "text")
+                st.download_button(
+                    label="📃 All Text Files",
+                    data=txt_zip.getvalue(),
+                    file_name="all_text_files.zip",
+                    mime="application/zip",
+                    use_container_width=True,
+                    key="batch_txt"
+                )
+            else:
+                st.info("Enable text export in settings")
+        
+        with col4:
+            # Complete package with all formats
+            complete_zip = create_complete_zip(successful_results, export_settings)
+            st.download_button(
+                label="📦 Complete Package",
+                data=complete_zip.getvalue(),
+                file_name="complete_document_package.zip",
+                mime="application/zip",
+                use_container_width=True,
+                key="batch_complete"
+            )
+    
+    # Results tabs for detailed view
+    tab1, tab2 = st.tabs(["📋 Summary", "📄 Preview"])
     
     with tab1:
         # Create summary dataframe
@@ -425,75 +571,6 @@ def display_results(results, export_markdown, export_text):
                 # Full JSON structure
                 with st.expander("🔍 Complete JSON Structure"):
                     st.json(doc)
-    
-    with tab3:
-        # Download section
-        st.subheader("📥 Download Options")
-        
-        successful_results = [r for r in results if r['success']]
-        
-        if len(successful_results) == 1:
-            # Single file downloads
-            result = successful_results[0]
-            doc = result['doc']
-            filename_base = Path(result['filename']).stem
-            
-            st.write(f"**Downloads for:** {result['filename']}")
-            
-            col1, col2, col3 = st.columns(3)
-            
-            with col1:
-                # JSON download
-                json_str = json.dumps(doc, ensure_ascii=False, indent=2)
-                st.download_button(
-                    label="📄 Download JSON",
-                    data=json_str,
-                    file_name=f"{filename_base}.json",
-                    mime="application/json",
-                    use_container_width=True
-                )
-            
-            with col2:
-                if export_markdown:
-                    # Markdown download
-                    md_content = create_markdown_export(doc)
-                    st.download_button(
-                        label="📝 Download Markdown",
-                        data=md_content,
-                        file_name=f"{filename_base}.md",
-                        mime="text/markdown",
-                        use_container_width=True
-                    )
-                else:
-                    st.info("Enable Markdown export in settings")
-            
-            with col3:
-                if export_text:
-                    # Plain text download
-                    text_content = get_text_content(doc)
-                    st.download_button(
-                        label="📃 Download Text",
-                        data=text_content,
-                        file_name=f"{filename_base}.txt",
-                        mime="text/plain",
-                        use_container_width=True
-                    )
-                else:
-                    st.info("Enable text export in settings")
-        
-        else:
-            # Multiple files - create ZIP
-            st.write(f"**Bulk download for {len(successful_results)} files**")
-            
-            zip_buffer = create_zip_package(successful_results, export_markdown, export_text)
-            
-            st.download_button(
-                label="📦 Download All Files (ZIP)",
-                data=zip_buffer.getvalue(),
-                file_name="converted_documents.zip",
-                mime="application/zip",
-                use_container_width=True
-            )
 
 def get_text_content(doc):
     """Extract text content from document"""
@@ -505,8 +582,54 @@ def get_text_content(doc):
         return "".join(parts).rstrip() + "\n"
     return doc["content"]["full_text"]
 
-def create_zip_package(successful_results, export_markdown, export_text):
-    """Create ZIP package with all files"""
+def create_single_file_zip(result, export_settings):
+    """Create ZIP package for a single file with all formats"""
+    zip_buffer = io.BytesIO()
+    filename_base = Path(result['filename']).stem
+    doc = result['doc']
+    
+    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+        # Add JSON
+        json_str = json.dumps(doc, ensure_ascii=False, indent=2)
+        zip_file.writestr(f"{filename_base}.json", json_str)
+        
+        # Add Markdown if requested
+        if export_settings['markdown']:
+            md_content = create_markdown_export(doc)
+            zip_file.writestr(f"{filename_base}.md", md_content)
+        
+        # Add text if requested
+        if export_settings['text']:
+            text_content = get_text_content(doc)
+            zip_file.writestr(f"{filename_base}.txt", text_content)
+    
+    zip_buffer.seek(0)
+    return zip_buffer
+
+def create_format_zip(successful_results, format_type):
+    """Create ZIP package for specific format only"""
+    zip_buffer = io.BytesIO()
+    
+    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+        for result in successful_results:
+            filename_base = Path(result['filename']).stem
+            doc = result['doc']
+            
+            if format_type == "json":
+                json_str = json.dumps(doc, ensure_ascii=False, indent=2)
+                zip_file.writestr(f"{filename_base}.json", json_str)
+            elif format_type == "markdown":
+                md_content = create_markdown_export(doc)
+                zip_file.writestr(f"{filename_base}.md", md_content)
+            elif format_type == "text":
+                text_content = get_text_content(doc)
+                zip_file.writestr(f"{filename_base}.txt", text_content)
+    
+    zip_buffer.seek(0)
+    return zip_buffer
+
+def create_complete_zip(successful_results, export_settings):
+    """Create complete ZIP package with all files and formats"""
     zip_buffer = io.BytesIO()
     
     with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
@@ -516,17 +639,17 @@ def create_zip_package(successful_results, export_markdown, export_text):
             
             # Add JSON
             json_str = json.dumps(doc, ensure_ascii=False, indent=2)
-            zip_file.writestr(f"{filename_base}.json", json_str)
+            zip_file.writestr(f"json/{filename_base}.json", json_str)
             
             # Add Markdown if requested
-            if export_markdown:
+            if export_settings['markdown']:
                 md_content = create_markdown_export(doc)
-                zip_file.writestr(f"{filename_base}.md", md_content)
+                zip_file.writestr(f"markdown/{filename_base}.md", md_content)
             
             # Add text if requested
-            if export_text:
+            if export_settings['text']:
                 text_content = get_text_content(doc)
-                zip_file.writestr(f"{filename_base}.txt", text_content)
+                zip_file.writestr(f"text/{filename_base}.txt", text_content)
     
     zip_buffer.seek(0)
     return zip_buffer
