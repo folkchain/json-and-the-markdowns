@@ -73,6 +73,7 @@ HYPHENS_WRAP = [
 ]
 
 # Updated whitespace rules with single word line fixes
+# Updated whitespace rules with comprehensive quote spacing fixes
 WHITESPACE = [
     Rule("trim trailing", r"[ \t]+$", "", re.MULTILINE),
     Rule("collapse 3+ spaces", r"[ \t]{3,}", " "),
@@ -80,7 +81,17 @@ WHITESPACE = [
     Rule("no space before punct", r"\s+([,.;:!?])", r"\1"),
     Rule("space after sentence", r"([.?!])([A-Z])", r"\1 \2"),
     Rule("collapse 4+ periods", r"\.{4,}", "..."),
-    # Fix single words on their own lines (join with next line if it's not a paragraph break)
+    
+    # Comprehensive quote spacing fixes
+    Rule("fix quote spacing pattern 1", r'\\\s*"\s*([^"]*?)\s*"\s*', r' "\1" '),  # \" text \" -> " text "
+    Rule("fix quote spacing pattern 2", r"\s+([\"'])([^\"']*?)([\"'])\s+", r' \1\2\3 '),  # Multiple spaces around quotes
+    Rule("space inside opening quote", r"([\"'])\s+([^\s])", r"\1\2"),          # Remove space after opening quote
+    Rule("space inside closing quote", r"([^\s])\s+([\"'])", r"\1\2"),          # Remove space before closing quote
+    Rule("normalize quote boundaries", r"\s*([\"'])\s*", r" \1"),               # Normalize spacing around quotes
+    Rule("clean quote start", r"\s([\"'])([A-Za-z])", r" \1\2"),               # Proper spacing before quotes
+    Rule("clean quote end", r"([.!?])([\"'])\s", r"\1\2 "),                   # Proper spacing after quotes
+    
+    # Fix single words on their own lines
     Rule("single word lines", r"^(\w+)\s*\n(?=\w)", r"\1 ", re.MULTILINE),
 ]
 
