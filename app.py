@@ -40,6 +40,13 @@ def main():
         with st.expander("Set metadata for all files", expanded=False):
             st.markdown("*Apply the same metadata to all uploaded files*")
             
+            # Title
+            common_title = st.text_input(
+                "Title", 
+                placeholder="Document Title",
+                help="Override filename-based title detection"
+            )
+            
             # Author information
             common_author = st.text_input(
                 "Author(s)", 
@@ -51,12 +58,10 @@ def main():
             col1, col2 = st.columns(2)
             with col1:
                 common_publisher = st.text_input("Publisher")
-                common_year = st.number_input(
-                    "Year", 
-                    min_value=1000, 
-                    max_value=2030, 
+                common_date = st.date_input(
+                    "Publication Date",
                     value=None,
-                    help="Publication year"
+                    help="Full publication date"
                 )
             with col2:
                 common_language = st.selectbox(
@@ -66,7 +71,7 @@ def main():
                 )
                 common_series = st.text_input("Series/Collection")
             
-            # Journal info (show when relevant)
+            # Publication type specific fields
             if publication_type in ["article", "journal", "magazine"]:
                 st.markdown("**Journal Information:**")
                 common_journal = st.text_input("Journal Title")
@@ -80,15 +85,23 @@ def main():
                 common_volume = ""
                 common_issue = ""
             
+            if publication_type == "book":
+                st.markdown("**Book Information:**")
+                bcol1, bcol2 = st.columns(2)
+                with bcol1:
+                    common_isbn = st.text_input("ISBN")
+                with bcol2:
+                    common_edition = st.text_input("Edition")
+            else:
+                common_isbn = ""
+                common_edition = ""
+            
             # Classification
             common_subjects = st.text_input(
                 "Subjects/Keywords", 
                 placeholder="history, science, literature",
                 help="Separate with commas"
             )
-            
-            # Rights and licensing
-            common_license = st.text_input("License", placeholder="CC BY 4.0, All Rights Reserved, etc.")
             
             # Clear button
             if st.button("🗑️ Clear All Common Metadata", help="Reset all common metadata fields"):
@@ -130,19 +143,20 @@ def main():
             
             **Common Metadata:**
             - Set once, applies to all files
+            - Publication type determines available fields
             - Individual file metadata still detected
-            - Saves time for batch processing
             
             **Text Cleaning Features:**
             - OCR error correction
             - Punctuation normalization
-            - Ligature fixes
-            - Whitespace cleanup
+            - Single word line fixes
+            - Page number removal
             
             **Chapter Detection:**
             - Automatically finds chapter headings
+            - Removes book title headers
+            - Handles page number patterns
             - Supports Roman numerals
-            - Customizable regex patterns
             
             **Export Formats:**
             - JSON with full metadata
@@ -151,13 +165,17 @@ def main():
             """)
     
     # Collect common metadata
-    common_metadata = {}
+    common_metadata = {"publication_type": publication_type}
+    
+    if common_title.strip():
+        common_metadata["title"] = common_title.strip()
     if common_author.strip():
         common_metadata["author"] = common_author.strip()
     if common_publisher.strip():
         common_metadata["publisher"] = common_publisher.strip()
-    if common_year:
-        common_metadata["year"] = common_year
+    if common_date:
+        common_metadata["publication_date"] = common_date.isoformat()
+        common_metadata["year"] = common_date.year
     if common_language and common_language != "en":
         common_metadata["language"] = common_language
     if common_series.strip():
@@ -168,10 +186,12 @@ def main():
         common_metadata["volume"] = common_volume.strip()
     if common_issue.strip():
         common_metadata["issue"] = common_issue.strip()
+    if common_isbn.strip():
+        common_metadata["isbn"] = common_isbn.strip()
+    if common_edition.strip():
+        common_metadata["edition"] = common_edition.strip()
     if common_subjects.strip():
         common_metadata["subjects"] = common_subjects.strip()
-    if common_license.strip():
-        common_metadata["license"] = common_license.strip()
     
     # Main content area
     col1, col2 = st.columns([2, 3])
@@ -189,7 +209,7 @@ def main():
             st.success(f"Uploaded {len(uploaded_files)} file(s)")
             
             # Show common metadata preview if any is set
-            if common_metadata:
+            if len(common_metadata) > 1:  # More than just publication_type
                 with st.expander("📋 Common Metadata Preview", expanded=True):
                     st.markdown("*The following metadata will be applied to all files:*")
                     for key, value in common_metadata.items():
@@ -197,8 +217,10 @@ def main():
                             st.write(f"**Authors:** {value}")
                         elif key == "subjects":
                             st.write(f"**Subjects:** {value}")
+                        elif key == "publication_type":
+                            continue  # Skip showing this
                         else:
-                            st.write(f"**{key.title()}:** {value}")
+                            st.write(f"**{key.replace('_', ' ').title()}:** {value}")
             
             # Show file details
             with st.expander("📋 File Details"):
@@ -231,24 +253,41 @@ def main():
         **✨ Key Features:**
         - 📖 **Multi-format support**: TXT and PDF files
         - 🧹 **Smart text cleaning**: OCR error correction, punctuation normalization
-        - 📑 **Chapter detection**: Automatic splitting with custom patterns
-        - 🏷️ **Rich metadata**: Complete bibliographic information
+        - 📑 **Chapter detection**: Automatic splitting with improved patterns
+        - 🏷️ **Rich metadata**: Publication type-specific fields
         - 📝 **Multiple exports**: JSON, Markdown, Plain Text
         - 🚀 **Batch processing**: Handle multiple files at once
         - 📋 **Common metadata**: Apply same metadata to all files
         
-        **📚 Metadata Structure:**
+        **📚 Publication Types:**
+        - **Books**: ISBN, edition, publisher info
+        - **Articles**: Journal, volume, issue info
+        - **Thesis**: Academic institution fields
+        - **Reports**: Organization and series info
         """)
         
-        # Show sample metadata structure
-        sample_structure = {
-            "data": {"title": "Document Title", "publication_type": "book", "year": 2024},
-            "authorship": {"authors": [{"name": "Author Name"}]},
-            "publication_details": {"publisher": "Publisher", "pages": {"total": 100}},
-            "content": {"full_text": "...", "chapters": []},
-            "identifiers": {"doi": "", "isbn": ""},
-            "classification": {"subjects": [], "keywords": []}
-        }
+        # Show sample metadata structure based on publication type
+        if publication_type == "book":
+            sample_structure = {
+                "data": {"title": "Book Title", "publication_type": "book", "year": 2024},
+                "authorship": {"authors": [{"name": "Author Name"}]},
+                "publication_details": {"publisher": "Publisher", "edition": "1st"},
+                "identifiers": {"isbn": "978-0123456789"},
+                "content": {"full_text": "...", "chapters": []}
+            }
+        elif publication_type in ["article", "journal"]:
+            sample_structure = {
+                "data": {"title": "Article Title", "publication_type": "article", "year": 2024},
+                "authorship": {"authors": [{"name": "Author Name"}]},
+                "journal_info": {"journal_title": "Journal Name", "volume": "10", "issue": "2"},
+                "content": {"full_text": "..."}
+            }
+        else:
+            sample_structure = {
+                "data": {"title": "Document Title", "publication_type": publication_type, "year": 2024},
+                "authorship": {"authors": [{"name": "Author Name"}]},
+                "content": {"full_text": "..."}
+            }
         
         with st.expander("📋 Sample JSON Structure"):
             st.json(sample_structure)
@@ -316,7 +355,9 @@ def process_files(uploaded_files, publication_type, apply_cleaning, split_chapte
                     except re.error as e:
                         st.warning(f"Invalid regex pattern for {uploaded_file.name}, using default: {e}")
                 
-                chapters = split_into_chapters(cleaned_text, chapter_re)
+                # Get book title for removal
+                book_title = doc["data"]["title"]
+                chapters = split_into_chapters(cleaned_text, chapter_re, book_title)
                 if chapters:
                     doc["content"]["chapters"] = chapters
                     doc["content"]["table_of_contents"] = [
@@ -549,7 +590,8 @@ def display_results(results):
                     st.write(f"**Authors:** {', '.join(authors) if authors else 'Not specified'}")
                 with col2:
                     st.write(f"**Year:** {doc['data']['year'] or 'Not specified'}")
-                    st.write(f"**Publisher:** {doc['publication_details']['publisher'] or 'Not specified'}")
+                    pub_details = doc.get('publication_details', {})
+                    st.write(f"**Publisher:** {pub_details.get('publisher', 'Not specified')}")
                     st.write(f"**File Size:** {doc['digital_format']['file_size']:,} bytes")
                     st.write(f"**Chapters:** {len(doc['content']['chapters'])}")
                 
