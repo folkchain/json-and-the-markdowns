@@ -67,9 +67,12 @@ MERGED = [
 HYPHENS_WRAP = [
     Rule("soft hyphen", r"\u00AD", ""),
     Rule("dash normalize", r"[—–]", " - "),
+    Rule("hangul kiyeok hyphen", r"\u1100", "-"),  # ᄀ (Hangul Choseong Kiyeok) -> hyphen
     Rule("EOL hyphen + lowercase", r"([a-z])-\s*\r?\n\s*(?=[a-z])", r"\1"),
+    Rule("EOL hangul kiyeok + lowercase", r"([a-z])\u1100\s*\r?\n\s*(?=[a-z])", r"\1"),  # Handle ᄀ at end of line
     Rule("join simple wraps", r"([a-z,;])\s*\r?\n(?=[a-z])", r"\1 "),
     Rule("inword hyphen + spaces", r"(\b[A-Za-z]+)-\s+([A-Za-z]+\b)", r"\1\2"),
+    Rule("inword hangul kiyeok + spaces", r"(\b[A-Za-z]+)\u1100\s+([A-Za-z]+\b)", r"\1\2"),  # Handle ᄀ in words
 ]
 
 # Updated whitespace rules with single word line fixes
